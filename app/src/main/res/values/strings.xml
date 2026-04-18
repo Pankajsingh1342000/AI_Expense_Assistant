@@ -1,3 +1,25 @@
 <resources>
     <string name="app_name">AI Expense Voice</string>
+    <string name="nav_dashboard">Dashboard</string>
+    <string name="nav_expenses">Expenses</string>
+    <string name="nav_chat">AI Chat</string>
+    <string name="nav_profile">Profile</string>
+    
+    <string name="title_dashboard">Dashboard</string>
+    <string name="title_expenses">Expenses</string>
+    <string name="title_profile">Profile</string>
+    <string name="title_ai_assistant">AI Assistant</string>
+    
+    <string name="chat_placeholder">Ask anything...</string>
+    
+    <string name="dialog_update_expense">Update expense</string>
+    <string name="dialog_delete_expense">Delete expense</string>
+    <string name="action_save">Save</string>
+    <string name="action_cancel">Cancel</string>
+    <string name="action_delete">Delete</string>
+    
+    <string name="dash_budget_overview">Budget Overview</string>
+    <string name="dash_recent_expenses">Recent Expenses</string>
+    <string name="dash_spending_trend">Spending trend</string>
+    <string name="dash_category_share">Category share</string>
 </resources>

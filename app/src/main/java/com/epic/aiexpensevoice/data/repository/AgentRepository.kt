@@ -50,7 +50,7 @@ class AgentRepository(
     suspend fun sendQuery(query: String): Resource<ParsedAgentResponse> {
         val prompt = query.trim()
         return runCatching {
-            handleDirectQuery(prompt) ?: handleAgentQuery(prompt)
+            handleAgentQuery(prompt)
         }.fold(
             onSuccess = { Resource.Success(it) },
             onFailure = { error ->
@@ -327,26 +327,30 @@ class AgentRepository(
     }
 
     private fun parseAddExpense(normalized: String, original: String): CreateExpenseRequestDto? {
-        val match = Regex("""^\s*add\s+(.+?)\s+(\d+(?:\.\d+)?)\s*$""", RegexOption.IGNORE_CASE).find(original) ?: return null
+        val match = Regex("""^\s*add\s+(.+?)\s+(\d+(?:\.\d+)?)(?:\s+(?:in|under|for)\s+([a-zA-Z ]+))?\s*$""", RegexOption.IGNORE_CASE)
+            .find(original) ?: return null
         val title = match.groupValues[1].trim()
         val amount = match.groupValues[2].toDoubleOrNull() ?: return null
+        val explicitCategory = match.groupValues.getOrNull(3)?.trim().orEmpty()
         return CreateExpenseRequestDto(
             title = title,
             amount = amount,
-            category = inferCategory(title),
+            category = explicitCategory.takeIf { it.isNotBlank() }?.lowercase(Locale.getDefault()) ?: inferCategory(title),
             description = null,
             date = OffsetDateTime.now().toString(),
         )
     }
 
     private fun parseOfflineAdd(query: String): ExpenseItem? {
-        val match = Regex("""^\s*add\s+(.+?)\s+(\d+(?:\.\d+)?)\s*$""", RegexOption.IGNORE_CASE).find(query) ?: return null
+        val match = Regex("""^\s*add\s+(.+?)\s+(\d+(?:\.\d+)?)(?:\s+(?:in|under|for)\s+([a-zA-Z ]+))?\s*$""", RegexOption.IGNORE_CASE)
+            .find(query) ?: return null
         val title = match.groupValues[1].trim()
         val amount = match.groupValues[2].toDoubleOrNull() ?: return null
+        val explicitCategory = match.groupValues.getOrNull(3)?.trim().orEmpty()
         return ExpenseItem(
             title = title.replaceFirstChar { if (it.isLowerCase()) it.titlecase() else it.toString() },
             amount = amount,
-            category = inferCategory(title),
+            category = explicitCategory.takeIf { it.isNotBlank() }?.lowercase(Locale.getDefault()) ?: inferCategory(title),
             dateLabel = OffsetDateTime.now().toString(),
             description = null,
         )

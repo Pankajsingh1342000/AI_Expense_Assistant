@@ -1,5 +1,6 @@
 package com.epic.aiexpensevoice.presentation.screen.auth
 
+import android.util.Patterns
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.epic.aiexpensevoice.core.common.Resource
@@ -34,13 +35,15 @@ class AuthViewModel(
 
     fun login(onSuccess: () -> Unit) {
         val state = _uiState.value
-        if (state.email.isBlank() || state.password.isBlank()) {
-            _uiState.value = state.copy(errorMessage = "Email and password are required.")
+        val trimmedEmail = state.email.trim()
+        val validationError = validateCredentials(trimmedEmail, state.password)
+        if (validationError != null) {
+            _uiState.value = state.copy(errorMessage = validationError)
             return
         }
         viewModelScope.launch {
             _uiState.value = _uiState.value.copy(isLoading = true, errorMessage = null)
-            when (val result = authRepository.login(state.email.trim(), state.password)) {
+            when (val result = authRepository.login(trimmedEmail, state.password)) {
                 is Resource.Success -> {
                     _uiState.value = _uiState.value.copy(isLoading = false)
                     onSuccess()
@@ -53,8 +56,10 @@ class AuthViewModel(
 
     fun register(onSuccess: () -> Unit) {
         val state = _uiState.value
-        if (state.email.isBlank() || state.password.isBlank()) {
-            _uiState.value = state.copy(errorMessage = "Email and password are required.")
+        val trimmedEmail = state.email.trim()
+        val validationError = validateCredentials(trimmedEmail, state.password)
+        if (validationError != null) {
+            _uiState.value = state.copy(errorMessage = validationError)
             return
         }
         if (state.password != state.confirmPassword) {
@@ -63,7 +68,7 @@ class AuthViewModel(
         }
         viewModelScope.launch {
             _uiState.value = _uiState.value.copy(isLoading = true, errorMessage = null)
-            when (val result = authRepository.register(state.email.trim(), state.password)) {
+            when (val result = authRepository.register(trimmedEmail, state.password)) {
                 is Resource.Success -> {
                     _uiState.value = _uiState.value.copy(isLoading = false)
                     onSuccess()
@@ -72,5 +77,12 @@ class AuthViewModel(
                 Resource.Loading -> Unit
             }
         }
+    }
+
+    private fun validateCredentials(email: String, password: String): String? = when {
+        email.isBlank() || password.isBlank() -> "Email and password are required."
+        !Patterns.EMAIL_ADDRESS.matcher(email).matches() -> "Enter a valid email address."
+        password.length < 8 -> "Password must be at least 8 characters."
+        else -> null
     }
 }

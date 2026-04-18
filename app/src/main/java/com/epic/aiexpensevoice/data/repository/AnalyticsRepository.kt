@@ -1,15 +1,12 @@
 package com.epic.aiexpensevoice.data.repository
 
 import androidx.compose.ui.graphics.Color
+import com.epic.aiexpensevoice.core.common.asCurrency
 import com.epic.aiexpensevoice.core.common.Resource
 import com.epic.aiexpensevoice.data.local.db.DashboardCacheStore
 import com.epic.aiexpensevoice.data.local.db.LocalExpenseStore
-import com.epic.aiexpensevoice.data.remote.dto.BudgetStatusDto
-import com.epic.aiexpensevoice.data.remote.dto.BudgetWarningDto
+import com.epic.aiexpensevoice.data.remote.dto.BudgetDto
 import com.epic.aiexpensevoice.data.remote.dto.ExpenseDto
-import com.epic.aiexpensevoice.data.remote.dto.MonthlySummaryDto
-import com.epic.aiexpensevoice.data.remote.dto.SpendingTrendDto
-import com.epic.aiexpensevoice.data.remote.dto.TopCategoryDto
 import com.epic.aiexpensevoice.data.remote.network.ApiService
 import com.epic.aiexpensevoice.domain.model.BudgetStatus
 import com.epic.aiexpensevoice.domain.model.BudgetTone
@@ -17,11 +14,13 @@ import com.epic.aiexpensevoice.domain.model.CategorySpend
 import com.epic.aiexpensevoice.domain.model.DashboardData
 import com.epic.aiexpensevoice.domain.model.ExpenseItem
 import com.epic.aiexpensevoice.domain.model.TrendPoint
-import kotlinx.coroutines.async
-import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
 import java.io.IOException
+import java.time.LocalDate
+import java.time.LocalDateTime
+import java.time.OffsetDateTime
+import java.time.format.DateTimeFormatter
 import kotlin.math.roundToInt
 
 class AnalyticsRepository(
@@ -52,49 +51,19 @@ class AnalyticsRepository(
     }
 
     suspend fun refreshDashboard(): Resource<DashboardData> = runCatching {
-        coroutineScope {
-            val expensesDeferred = async { apiService.getExpenses() }
-            val totalDeferred = async { apiService.getExpenseTotal() }
-            val monthlyDeferred = async { apiService.getMonthlySummary() }
-            val dailyDeferred = async { apiService.getDailySpending() }
-            val topDeferred = async { apiService.getTopCategory() }
-            val trendDeferred = async { apiService.getSpendingTrend() }
-            val budgetsDeferred = async { apiService.getBudgets() }
-            val warningsDeferred = async { apiService.getBudgetWarnings() }
-            val insightsDeferred = async { apiService.getInsights() }
+        val expenses = apiService.getExpenses()
+            .requireBody("expenses")
+            .map { it.toDomain() }
 
-            val expenses = expensesDeferred.await().requireBody("expenses").map { it.toDomain() }
-            localExpenseStore.replaceSyncedExpenses(expenses)
+        localExpenseStore.replaceSyncedExpenses(expenses)
 
-            val total = totalDeferred.await().requireBody("total").total_expenses.toDoubleOrNull() ?: 0.0
-            val monthly = monthlyDeferred.await().requireBody("monthly summary")
-            val daily = dailyDeferred.await().requireBody("daily spending")
-            val top = topDeferred.await().requireBody("top category")
-            val trend = trendDeferred.await().requireBody("spending trend")
-            val budgets = budgetsDeferred.await().requireBody("budgets")
-            val warnings = warningsDeferred.await().requireBody("budget warnings").warnings
-            val insights = insightsDeferred.await().requireBody("insights")
+        val budgets = runCatching {
+            apiService.getBudgets()
+                .requireBody("budgets")
+        }.getOrDefault(emptyList())
 
-            buildDashboard(
-                total = total,
-                monthly = monthly,
-                dailySpent = daily.total_spent,
-                top = top,
-                trend = trend,
-                expenses = expenses,
-                budgetStatuses = budgets.map { budget ->
-                    val warning = warnings.firstOrNull { it.category.equals(budget.category, ignoreCase = true) }
-                    val statusDto = BudgetStatusDto(
-                        category = budget.category,
-                        budget = budget.monthly_limit,
-                        spent = warning?.spent ?: 0.0,
-                        remaining = budget.monthly_limit - (warning?.spent ?: 0.0),
-                    )
-                    statusDto.toDomain(warning)
-                },
-                insight = insights.insight,
-            ).also { dashboardCacheStore.saveDashboard(it) }
-        }
+        buildDashboard(expenses = expenses, budgets = budgets)
+            .also { dashboardCacheStore.saveDashboard(it) }
     }.fold(
         onSuccess = { Resource.Success(it) },
         onFailure = { error ->
@@ -107,59 +76,87 @@ class AnalyticsRepository(
     )
 
     private fun buildDashboard(
-        total: Double,
-        monthly: MonthlySummaryDto,
-        dailySpent: Double,
-        top: TopCategoryDto,
-        trend: List<SpendingTrendDto>,
         expenses: List<ExpenseItem>,
-        budgetStatuses: List<BudgetStatus>,
-        insight: String,
+        budgets: List<BudgetDto>,
     ): DashboardData {
-        val categories = monthly.categories.mapIndexed { index, item ->
-            CategorySpend(
-                category = item.category.replaceFirstChar { if (it.isLowerCase()) it.titlecase() else it.toString() },
-                amount = item.amount,
-                share = 0f,
-                color = palette[index % palette.size],
-            )
-        }.normalizeShares()
+        val now = LocalDate.now()
+        val parsedExpenses = expenses.map { it to it.dateLabel.toLocalDateOrNow() }
+        val monthExpenses = parsedExpenses.filter { (_, date) ->
+            date.year == now.year && date.month == now.month
+        }.map { it.first }
 
-        val normalizedTop = categories.firstOrNull { it.category.equals(top.top_category, ignoreCase = true) }
-            ?: categories.maxByOrNull { it.amount }
+        val totalSpent = monthExpenses.sumOf { it.amount }
+        val todaySpent = parsedExpenses
+            .filter { (_, date) -> date == now }
+            .sumOf { it.first.amount }
+
+        val categories = monthExpenses.groupBy { it.category.lowercase() }
+            .entries
+            .sortedByDescending { it.value.sumOf { expense -> expense.amount } }
+            .mapIndexed { index, entry ->
+                CategorySpend(
+                    category = entry.key.replaceFirstChar { if (it.isLowerCase()) it.titlecase() else it.toString() },
+                    amount = entry.value.sumOf { expense -> expense.amount },
+                    share = 0f,
+                    color = palette[index % palette.size],
+                )
+            }
+            .normalizeShares()
+
+        val monthExpenseGroups = monthExpenses.groupBy { it.dateLabel.toLocalDateOrNow() }
+        val trend = (6 downTo 0).map { offset ->
+            val day = now.minusDays(offset.toLong())
+            TrendPoint(
+                label = day.format(DateTimeFormatter.ofPattern("dd MMM")),
+                amount = monthExpenseGroups[day].orEmpty().sumOf { expense -> expense.amount },
+            )
+        }
+
+        val budgetStatuses = budgets.map { budget ->
+            val spent = monthExpenses
+                .filter { it.category.equals(budget.category, ignoreCase = true) }
+                .sumOf { it.amount }
+            val progress = if (budget.monthly_limit > 0) (spent / budget.monthly_limit).toFloat().coerceIn(0f, 1.4f) else 0f
+            val tone = when {
+                progress >= 1f -> BudgetTone.Risk
+                progress >= 0.8f -> BudgetTone.Watch
+                else -> BudgetTone.Healthy
+            }
+            BudgetStatus(
+                category = budget.category.replaceFirstChar { if (it.isLowerCase()) it.titlecase() else it.toString() },
+                spent = spent,
+                limit = budget.monthly_limit,
+                statusLabel = "${(progress * 100).roundToInt()}% used",
+                progress = progress,
+                tone = tone,
+            )
+        }.filter { it.limit > 0 }
+
+        val topCategory = categories.maxByOrNull { it.amount }
+        val insight = when {
+            topCategory == null -> "No insight available yet."
+            topCategory.share >= 0.5f -> "${topCategory.category} makes up most of your spending this month."
+            budgetStatuses.any { it.tone == BudgetTone.Risk } -> "One or more budgets are already over their limit."
+            budgetStatuses.any { it.tone == BudgetTone.Watch } -> "A budget is getting close to its limit."
+            else -> "${topCategory.category} is your biggest spending category this month."
+        }
 
         return DashboardData(
-            totalSpent = total,
-            totalChangeLabel = if (monthly.month_total > 0) "Month to date" else "No activity this month yet",
-            topCategory = normalizedTop?.takeIf { it.amount > 0 },
-            categories = categories.filter { it.amount > 0 },
-            budgets = budgetStatuses.filter { it.limit > 0 },
-            recentExpenses = expenses.sortedByDescending { it.dateLabel }.take(6),
-            trendPoints = trend.map { TrendPoint(label = it.date.take(10), amount = it.amount) }.filter { it.amount > 0 },
-            insight = insight.ifBlank { "No insight available yet." },
-            summaryLabel = if (dailySpent > 0) "Today: INR %.2f".format(dailySpent) else "No spending recorded today",
+            totalSpent = totalSpent,
+            totalChangeLabel = if (totalSpent > 0) "Month to date" else "No activity this month yet",
+            topCategory = topCategory,
+            categories = categories,
+            budgets = budgetStatuses,
+            recentExpenses = expenses.sortedByDescending { it.dateLabel.toSortableEpoch() }.take(6),
+            trendPoints = trend,
+            insight = insight,
+            summaryLabel = if (todaySpent > 0) "Today: ${todaySpent.asCurrency()}" else "No spending recorded today",
         )
     }
+
     private fun List<CategorySpend>.normalizeShares(): List<CategorySpend> {
         val total = sumOf { it.amount }.takeIf { it > 0 } ?: return emptyList()
         return map { it.copy(share = (it.amount / total).toFloat()) }
-    }
-
-    private fun BudgetStatusDto.toDomain(warning: BudgetWarningDto?): BudgetStatus {
-        val progress = ((warning?.usage_percent ?: if (budget > 0) (spent / budget) * 100 else 0.0) / 100.0).toFloat().coerceIn(0f, 1.4f)
-        val tone = when {
-            progress >= 1f -> BudgetTone.Risk
-            progress >= 0.8f -> BudgetTone.Watch
-            else -> BudgetTone.Healthy
-        }
-        return BudgetStatus(
-            category = category.replaceFirstChar { if (it.isLowerCase()) it.titlecase() else it.toString() },
-            spent = spent,
-            limit = budget,
-            statusLabel = "${(progress * 100).roundToInt()}% used",
-            progress = progress,
-            tone = tone,
-        )
     }
 
     private fun ExpenseDto.toDomain(): ExpenseItem = ExpenseItem(
@@ -177,3 +174,22 @@ private fun <T> retrofit2.Response<T>.requireBody(label: String): T {
     if (!isSuccessful || body == null) error("$label request failed with ${code()}")
     return body
 }
+
+private fun String.toLocalDateOrNow(): LocalDate = runCatching {
+    when {
+        contains("T") && contains("+") -> OffsetDateTime.parse(this).toLocalDate()
+        contains("T") -> LocalDateTime.parse(this).toLocalDate()
+        length >= 10 -> LocalDate.parse(take(10))
+        else -> LocalDate.now()
+    }
+}.getOrElse { LocalDate.now() }
+
+private fun String.toSortableEpoch(): Long = runCatching {
+    when {
+        contains("T") && contains("+") -> OffsetDateTime.parse(this).toInstant().toEpochMilli()
+        contains("T") && contains("Z") -> OffsetDateTime.parse(this).toInstant().toEpochMilli()
+        contains("T") -> LocalDateTime.parse(this).atZone(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli()
+        length >= 10 -> LocalDate.parse(take(10)).atStartOfDay(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli()
+        else -> Long.MIN_VALUE
+    }
+}.getOrDefault(Long.MIN_VALUE)

@@ -15,6 +15,7 @@ import com.epic.aiexpensevoice.data.remote.dto.ExpenseTotalDto
 import com.epic.aiexpensevoice.data.remote.dto.InsightsDto
 import com.epic.aiexpensevoice.data.remote.dto.MonthlySummaryDto
 import com.epic.aiexpensevoice.data.remote.dto.AuthResponseDto
+import com.epic.aiexpensevoice.data.remote.dto.RefreshTokenRequestDto
 import com.epic.aiexpensevoice.data.remote.dto.RegisterRequestDto
 import com.epic.aiexpensevoice.data.remote.dto.SpendingTrendDto
 import com.epic.aiexpensevoice.data.remote.dto.TopCategoryDto
@@ -42,6 +43,11 @@ interface ApiService {
     suspend fun login(
         @Field("username") email: String,
         @Field("password") password: String,
+    ): Response<AuthResponseDto>
+
+    @POST("/api/v1/auth/refresh")
+    suspend fun refreshToken(
+        @Body request: RefreshTokenRequestDto,
     ): Response<AuthResponseDto>
 
     @POST("/api/v1/expenses/agent")

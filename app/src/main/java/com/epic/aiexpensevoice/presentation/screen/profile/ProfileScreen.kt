@@ -6,10 +6,6 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.Button
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
@@ -18,7 +14,10 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import com.epic.aiexpensevoice.presentation.components.ArchitectTopBar
 import com.epic.aiexpensevoice.presentation.components.EmptyStateCard
+import com.epic.aiexpensevoice.presentation.components.GradientPrimaryButton
+import com.epic.aiexpensevoice.presentation.components.SectionCard
 
 @Composable
 fun ProfileScreen(
@@ -27,42 +26,51 @@ fun ProfileScreen(
 ) {
     val state by viewModel.uiState.collectAsState()
 
-    LazyColumn(contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+    LazyColumn(contentPadding = PaddingValues(bottom = 132.dp), verticalArrangement = Arrangement.spacedBy(18.dp)) {
+        item { ArchitectTopBar(title = "Profile") }
         item {
-            Card(shape = RoundedCornerShape(28.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
-                Column(modifier = Modifier.padding(22.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("Account", style = MaterialTheme.typography.headlineMedium)
-                    Text(state.email.ifBlank { "No email available" }, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.72f))
-                    Text("Your assistant stays in sync across chat, dashboard, and expenses.", color = MaterialTheme.colorScheme.primary)
+            SectionCard {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Account", style = MaterialTheme.typography.titleLarge)
+                    Text(state.email.ifBlank { "No email available" }, style = MaterialTheme.typography.bodyLarge)
+                    Text("Your assistant stays in sync across chat, dashboard, and expenses.", color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
         }
         item {
-            Card(shape = RoundedCornerShape(28.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
-                Column(modifier = Modifier.padding(22.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Text("Connection settings", style = MaterialTheme.typography.titleLarge)
-                    Text("Only change this if you're switching to another backend environment.", color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f))
+            SectionCard {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text("Connection Settings", style = MaterialTheme.typography.titleLarge)
+                    Text("Only change this when switching environments.", color = MaterialTheme.colorScheme.onSurfaceVariant)
                     OutlinedTextField(
                         value = state.baseUrl,
                         onValueChange = viewModel::updateBaseUrl,
                         label = { Text("Base URL") },
                         modifier = Modifier.fillMaxWidth(),
+                        shape = androidx.compose.foundation.shape.RoundedCornerShape(999.dp),
                     )
-                    Button(onClick = viewModel::saveBaseUrl, modifier = Modifier.fillMaxWidth(), enabled = !state.isSaving) {
-                        Text(if (state.isSaving) "Saving..." else "Save changes")
-                    }
+                    GradientPrimaryButton(
+                        text = if (state.isSaving) "Saving..." else "Save Changes",
+                        onClick = viewModel::saveBaseUrl,
+                        modifier = Modifier.fillMaxWidth(),
+                        enabled = !state.isSaving,
+                    )
                     state.infoMessage?.let { Text(it, color = MaterialTheme.colorScheme.primary) }
                     state.errorMessage?.let { Text(it, color = MaterialTheme.colorScheme.error) }
                 }
             }
         }
         item {
-            EmptyStateCard("Voice tips", "Tap the mic in chat, speak naturally, then pause. You can say things like 'Add lunch 220' or 'Any budget warning?'.")
+            EmptyStateCard("Voice tips", "Tap the mic in chat and say things like 'Add lunch 220' or 'Any budget warning?'.")
         }
         item {
-            Button(onClick = { viewModel.logout(onLoggedOut) }, modifier = Modifier.fillMaxWidth()) {
-                Text("Sign out")
-            }
+            GradientPrimaryButton(
+                text = "Sign Out",
+                onClick = { viewModel.logout(onLoggedOut) },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 8.dp),
+            )
         }
     }
 }

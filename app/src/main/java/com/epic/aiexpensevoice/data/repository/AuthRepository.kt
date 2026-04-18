@@ -7,6 +7,7 @@ import com.epic.aiexpensevoice.data.local.db.DashboardCacheStore
 import com.epic.aiexpensevoice.data.local.db.LocalExpenseStore
 import com.epic.aiexpensevoice.data.remote.dto.RegisterRequestDto
 import com.epic.aiexpensevoice.data.remote.network.ApiService
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 
 class AuthRepository(
     private val apiService: ApiService,
@@ -31,6 +32,7 @@ class AuthRepository(
         if (!response.isSuccessful || body == null) error("Login failed with ${response.code()}")
         sessionManager.saveAuth(
             accessToken = body.access_token,
+            refreshToken = body.refresh_token,
             tokenType = body.token_type,
             email = email,
             name = email.substringBefore("@"),
@@ -41,7 +43,12 @@ class AuthRepository(
     )
 
     suspend fun updateBaseUrl(baseUrl: String): Resource<Unit> = runCatching {
-        sessionManager.updateBaseUrl(baseUrl)
+        val sanitized = baseUrl.trim()
+        val parsed = sanitized.toHttpUrlOrNull() ?: error("Enter a valid backend URL.")
+        require(parsed.isHttps || parsed.host == "10.0.2.2" || parsed.host == "localhost") {
+            "Use an https URL, or localhost/10.0.2.2 for local development."
+        }
+        sessionManager.updateBaseUrl(parsed.toString())
     }.fold(
         onSuccess = { Resource.Success(Unit) },
         onFailure = { Resource.Error(it.message ?: "Could not update the base URL.", it) },

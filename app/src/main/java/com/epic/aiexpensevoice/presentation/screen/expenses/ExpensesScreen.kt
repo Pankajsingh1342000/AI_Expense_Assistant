@@ -13,86 +13,87 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.Button
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import com.epic.aiexpensevoice.core.common.asCurrency
 import com.epic.aiexpensevoice.domain.model.ExpenseItem
+import com.epic.aiexpensevoice.presentation.components.ArchitectTopBar
 import com.epic.aiexpensevoice.presentation.components.EmptyStateCard
+import com.epic.aiexpensevoice.presentation.components.ExpenseRowCard
+import com.epic.aiexpensevoice.presentation.components.HeroMetricCard
+import com.epic.aiexpensevoice.presentation.components.SectionCard
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ExpensesScreen(viewModel: ExpensesViewModel) {
     val state by viewModel.uiState.collectAsState()
     var editingExpense by remember { mutableStateOf<ExpenseItem?>(null) }
     var deletingExpense by remember { mutableStateOf<ExpenseItem?>(null) }
 
-    LazyColumn(
-        contentPadding = PaddingValues(16.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp),
+    PullToRefreshBox(
+        isRefreshing = state.isLoading,
+        onRefresh = { viewModel.refresh() },
+        modifier = Modifier.fillMaxSize(),
     ) {
-        item {
-            Card(shape = RoundedCornerShape(30.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
-                Column(modifier = Modifier.padding(22.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("Expenses", style = MaterialTheme.typography.headlineMedium)
-                    Text("Review recent entries, make quick edits, or remove anything that looks off.", color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.72f))
-                    Button(onClick = viewModel::refresh) {
-                        Text("Refresh")
+        LazyColumn(
+            contentPadding = PaddingValues(bottom = 132.dp),
+            verticalArrangement = Arrangement.spacedBy(18.dp),
+            modifier = Modifier.fillMaxSize()
+        ) {
+            item { ArchitectTopBar(title = "Expenses") }
+            item {
+                com.epic.aiexpensevoice.presentation.components.SectionCard {
+                    androidx.compose.foundation.layout.Column(verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(8.dp)) {
+                        androidx.compose.material3.Text("Expense Entries", style = androidx.compose.material3.MaterialTheme.typography.titleLarge)
+                        androidx.compose.material3.Text(state.expenses.size.toString(), style = androidx.compose.material3.MaterialTheme.typography.displayLarge)
+                        androidx.compose.material3.Text("Review and manage your latest spending activity", color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
             }
-        }
-        state.infoMessage?.let { message ->
-            item { Text(message, color = MaterialTheme.colorScheme.primary) }
-        }
-        state.errorMessage?.let { message ->
-            item { Text(message, color = MaterialTheme.colorScheme.error) }
-        }
-        if (state.isLoading && state.expenses.isEmpty()) {
-            item { EmptyStateCard("Loading expenses", "Bringing your entries into view.") }
-        }
-        if (!state.isLoading && state.expenses.isEmpty()) {
-            item { EmptyStateCard("No expenses yet", "Add your first expense in chat and it will show up here automatically.") }
-        }
-        items(state.expenses) { expense ->
-            Card(shape = RoundedCornerShape(24.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
-                Row(
-                    modifier = Modifier.fillMaxWidth().padding(16.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                ) {
-                    Column(verticalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.weight(1f)) {
-                        Text(expense.title, fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.titleMedium)
-                        Text(expense.amount.asCurrency(), style = MaterialTheme.typography.titleLarge)
-                        Text("${expense.category} - ${expense.dateLabel}", color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f))
-                    }
-                    Row {
-                        IconButton(onClick = {
-                            viewModel.clearMessages()
-                            editingExpense = expense
-                        }) {
-                            Icon(Icons.Default.Edit, contentDescription = "Edit")
-                        }
-                        IconButton(onClick = {
-                            viewModel.clearMessages()
-                            deletingExpense = expense
-                        }) {
-                            Icon(Icons.Default.DeleteOutline, contentDescription = "Delete")
-                        }
-                    }
+            state.infoMessage?.let { item { Text(it, color = MaterialTheme.colorScheme.primary) } }
+            state.errorMessage?.let { item { Text(it, color = MaterialTheme.colorScheme.error) } }
+            if (state.isLoading && state.expenses.isEmpty()) {
+                item { EmptyStateCard("Loading expenses", "Bringing your entries into view.") }
+            } else if (state.expenses.isEmpty()) {
+                item {
+                    EmptyStateCard(
+                        "No expenses yet",
+                        "When you add an expense via voice or chat, it will appear here.",
+                        actionLabel = "Refresh",
+                        onAction = viewModel::refresh,
+                    )
+                }
+            } else {
+                items(state.expenses) { expense ->
+                    ExpenseRowCard(
+                        expense = expense,
+                        trailing = {
+                            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                IconButton(onClick = { editingExpense = expense }) {
+                                    Icon(Icons.Default.Edit, contentDescription = "Edit")
+                                }
+                                IconButton(onClick = { deletingExpense = expense }) {
+                                    Icon(Icons.Default.DeleteOutline, contentDescription = "Delete", tint = MaterialTheme.colorScheme.error)
+                                }
+                            }
+                        },
+                    )
                 }
             }
         }
@@ -118,14 +119,10 @@ fun ExpensesScreen(viewModel: ExpensesViewModel) {
                 TextButton(onClick = {
                     viewModel.deleteExpense(expense)
                     deletingExpense = null
-                }) {
-                    Text("Delete")
-                }
+                }) { Text("Delete") }
             },
             dismissButton = {
-                TextButton(onClick = { deletingExpense = null }) {
-                    Text("Cancel")
-                }
+                TextButton(onClick = { deletingExpense = null }) { Text("Cancel") }
             },
         )
     }
@@ -138,34 +135,44 @@ private fun EditExpenseDialog(
     onSave: (Double) -> Unit,
 ) {
     var amountText by remember(expense.title) { mutableStateOf(expense.amount.toString()) }
+    var isError by remember { mutableStateOf(false) }
 
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Update expense") },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Text(expense.title)
-                OutlinedTextField(
-                    value = amountText,
-                    onValueChange = { amountText = it },
-                    label = { Text("Amount") },
-                    singleLine = true,
-                )
+            SectionCard {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text(expense.title, style = MaterialTheme.typography.titleMedium)
+                    OutlinedTextField(
+                        value = amountText,
+                        onValueChange = { 
+                            amountText = it
+                            isError = false
+                        },
+                        label = { Text("Amount") },
+                        singleLine = true,
+                        isError = isError,
+                        shape = RoundedCornerShape(999.dp),
+                        supportingText = if (isError) { { Text("Please enter a valid number") } } else null
+                    )
+                }
             }
         },
         confirmButton = {
             TextButton(
-                onClick = {
-                    amountText.toDoubleOrNull()?.let(onSave)
-                },
-            ) {
-                Text("Save")
-            }
+                onClick = { 
+                    val parsed = amountText.toDoubleOrNull()
+                    if (parsed != null && parsed > 0) {
+                        onSave(parsed)
+                    } else {
+                        isError = true
+                    }
+                }
+            ) { Text("Save") }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text("Cancel")
-            }
+            TextButton(onClick = onDismiss) { Text("Cancel") }
         },
     )
 }

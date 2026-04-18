@@ -4,6 +4,7 @@ import com.epic.aiexpensevoice.data.local.db.dao.ExpenseCacheDao
 import com.epic.aiexpensevoice.data.local.db.dao.PendingSyncDao
 import com.epic.aiexpensevoice.data.local.db.entity.ExpenseCacheEntity
 import com.epic.aiexpensevoice.data.local.db.entity.PendingSyncEntity
+import com.epic.aiexpensevoice.core.common.asCurrency
 import com.epic.aiexpensevoice.domain.model.BudgetStatus
 import com.epic.aiexpensevoice.domain.model.BudgetTone
 import com.epic.aiexpensevoice.domain.model.CategorySpend
@@ -169,17 +170,14 @@ class LocalExpenseStore(
             .sortedByDescending { category -> category.amount }
         val normalizedCategories = normalizeShares(categoryTotals)
 
-        val trendPoints = monthExpenses.groupBy { it.dateLabel.toLocalDateOrNow() }
-            .toSortedMap()
-            .entries
-            .toList()
-            .takeLast(7)
-            .map { entry ->
-                TrendPoint(
-                    entry.key.format(DateTimeFormatter.ofPattern("dd MMM")),
-                    entry.value.sumOf { expense -> expense.amount },
-                )
-            }
+        val groupedByDay = monthExpenses.groupBy { it.dateLabel.toLocalDateOrNow() }
+        val trendPoints = (6 downTo 0).map { offset ->
+            val day = LocalDate.now().minusDays(offset.toLong())
+            TrendPoint(
+                day.format(DateTimeFormatter.ofPattern("dd MMM")),
+                groupedByDay[day].orEmpty().sumOf { expense -> expense.amount },
+            )
+        }
 
         val todayTotal = parsedExpenses.filter { (_, date) -> date == LocalDate.now() }.sumOf { it.first.amount }
         val topCategory = normalizedCategories.maxByOrNull { it.amount }
@@ -190,13 +188,13 @@ class LocalExpenseStore(
             topCategory = topCategory,
             categories = normalizedCategories,
             budgets = emptyList<BudgetStatus>(),
-            recentExpenses = expenses.take(6),
+            recentExpenses = expenses.sortedByDescending { it.dateLabel.toSortableEpoch() }.take(6),
             trendPoints = trendPoints,
             insight = when {
                 topCategory == null -> "No insight available yet."
-                else -> "Offline insight: ${topCategory.category} is currently your top spending category."
+                else -> "${topCategory.category} is currently your biggest local spending category."
             },
-            summaryLabel = if (todayTotal > 0) "Today's local spending: INR %.2f".format(todayTotal) else "No daily spending recorded yet.",
+            summaryLabel = if (todayTotal > 0) "Today: ${todayTotal.asCurrency()}" else "No daily spending recorded yet.",
         )
     }
 
@@ -238,3 +236,13 @@ private fun String.toLocalDateOrNow(): LocalDate = runCatching {
         else -> LocalDate.now()
     }
 }.getOrElse { LocalDate.now() }
+
+private fun String.toSortableEpoch(): Long = runCatching {
+    when {
+        contains("T") && contains("+") -> OffsetDateTime.parse(this).toInstant().toEpochMilli()
+        contains("T") && contains("Z") -> OffsetDateTime.parse(this).toInstant().toEpochMilli()
+        contains("T") -> LocalDateTime.parse(this).atZone(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli()
+        length >= 10 -> LocalDate.parse(take(10)).atStartOfDay(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli()
+        else -> Long.MIN_VALUE
+    }
+}.getOrDefault(Long.MIN_VALUE)

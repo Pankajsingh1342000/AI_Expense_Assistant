@@ -9,6 +9,7 @@ import androidx.datastore.preferences.preferencesDataStore
 import com.epic.aiexpensevoice.BuildConfig
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import java.io.IOException
 
@@ -16,6 +17,7 @@ private val Context.dataStore by preferencesDataStore(name = "ai_expense_voice_s
 
 data class UserSession(
     val accessToken: String? = null,
+    val refreshToken: String? = null,
     val tokenType: String = "bearer",
     val email: String? = null,
     val name: String? = null,
@@ -28,6 +30,7 @@ data class UserSession(
 class SessionManager(private val context: Context) {
     private object Keys {
         val AccessToken = stringPreferencesKey("access_token")
+        val RefreshToken = stringPreferencesKey("refresh_token")
         val TokenType = stringPreferencesKey("token_type")
         val Email = stringPreferencesKey("email")
         val Name = stringPreferencesKey("name")
@@ -41,6 +44,7 @@ class SessionManager(private val context: Context) {
         .map { preferences ->
             UserSession(
                 accessToken = preferences[Keys.AccessToken],
+                refreshToken = preferences[Keys.RefreshToken],
                 tokenType = preferences[Keys.TokenType] ?: "bearer",
                 email = preferences[Keys.Email],
                 name = preferences[Keys.Name],
@@ -48,14 +52,35 @@ class SessionManager(private val context: Context) {
             )
         }
 
-    suspend fun saveAuth(accessToken: String, tokenType: String, email: String, name: String?) {
+    suspend fun saveAuth(
+        accessToken: String,
+        refreshToken: String,
+        tokenType: String,
+        email: String,
+        name: String?,
+    ) {
         context.dataStore.edit { preferences ->
             preferences[Keys.AccessToken] = accessToken
+            preferences[Keys.RefreshToken] = refreshToken
             preferences[Keys.TokenType] = tokenType
             preferences[Keys.Email] = email
             preferences[Keys.Name] = name ?: email.substringBefore("@")
         }
     }
+
+    suspend fun updateTokens(
+        accessToken: String,
+        refreshToken: String,
+        tokenType: String,
+    ) {
+        context.dataStore.edit { preferences ->
+            preferences[Keys.AccessToken] = accessToken
+            preferences[Keys.RefreshToken] = refreshToken
+            preferences[Keys.TokenType] = tokenType
+        }
+    }
+
+    suspend fun getSessionSnapshot(): UserSession = session.first()
 
     suspend fun updateBaseUrl(baseUrl: String) {
         context.dataStore.edit { preferences ->
@@ -64,6 +89,12 @@ class SessionManager(private val context: Context) {
     }
 
     suspend fun clearSession() {
-        context.dataStore.edit { it.clear() }
+        context.dataStore.edit { preferences ->
+            preferences.remove(Keys.AccessToken)
+            preferences.remove(Keys.RefreshToken)
+            preferences.remove(Keys.TokenType)
+            preferences.remove(Keys.Email)
+            preferences.remove(Keys.Name)
+        }
     }
 }

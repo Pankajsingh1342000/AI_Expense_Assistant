@@ -1,15 +1,23 @@
 package com.epic.aiexpensevoice.presentation.screen.splash
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.epic.aiexpensevoice.presentation.components.GradientScreen
 
@@ -17,17 +25,56 @@ import com.epic.aiexpensevoice.presentation.components.GradientScreen
 fun SplashScreen() {
     GradientScreen {
         Column(
-            modifier = Modifier.fillMaxSize().padding(32.dp),
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(32.dp),
             verticalArrangement = Arrangement.Center,
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            Text("AI Expense Voice", style = MaterialTheme.typography.headlineLarge)
+            Surface(
+                shape = RoundedCornerShape(38.dp),
+                shadowElevation = 18.dp,
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(112.dp)
+                        .background(
+                            Brush.linearGradient(
+                                colors = listOf(
+                                    MaterialTheme.colorScheme.primary,
+                                    MaterialTheme.colorScheme.primaryContainer,
+                                ),
+                            ),
+                        ),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    androidx.compose.material3.Icon(
+                        imageVector = Icons.Default.Mic,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onPrimary,
+                        modifier = Modifier.size(48.dp),
+                    )
+                }
+            }
             Text(
-                "Voice-first budgeting and conversational expense tracking.",
-                style = MaterialTheme.typography.bodyLarge,
-                color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.72f),
+                text = "AI Expense Voice",
+                modifier = Modifier.padding(top = 28.dp),
+                style = MaterialTheme.typography.headlineLarge,
+                color = MaterialTheme.colorScheme.primary,
             )
-            CircularProgressIndicator(modifier = Modifier.padding(top = 28.dp))
+            Text(
+                text = "Intelligence in Finance",
+                modifier = Modifier.padding(top = 10.dp),
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Text(
+                text = "Securely connected",
+                modifier = Modifier.padding(top = 36.dp),
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = TextAlign.Center,
+            )
         }
     }
 }

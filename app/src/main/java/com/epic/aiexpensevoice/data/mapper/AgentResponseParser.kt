@@ -45,6 +45,10 @@ class AgentResponseParser {
             return emptyStateForQuery(query)
         }
 
+        val explicitReply = if (root.isJsonObject) {
+            root.asJsonObject.findString("reply")
+        } else null
+
         val texts = linkedSetOf<String>()
         val expenses = mutableListOf<ExpenseItem>()
         val categories = mutableListOf<CategorySpend>()
@@ -73,7 +77,9 @@ class AgentResponseParser {
         val normalizedBudgets = budgets.distinctBy { it.category }
         val normalizedTrends = trends.distinctBy { it.label }
         val normalizedExpenses = expenses.distinctBy { "${it.title}-${it.amount}-${it.dateLabel}" }
-        val headline = texts.firstOrNull() ?: "Assistant update ready"
+        val headline = explicitReply
+            ?: texts.firstOrNull()?.trim()?.takeIf { it.isNotBlank() }
+            ?: "Assistant update ready"
 
         val blocks = buildList {
             if (normalizedExpenses.isNotEmpty()) add(AgentContentBlock.ExpenseList("Expenses", normalizedExpenses.take(8)))
@@ -81,11 +87,20 @@ class AgentResponseParser {
             if (normalizedCategories.isNotEmpty()) add(AgentContentBlock.CategoryBreakdown("Category breakdown", normalizedCategories))
             if (normalizedBudgets.isNotEmpty()) add(AgentContentBlock.BudgetOverview("Budget health", normalizedBudgets))
             if (normalizedTrends.isNotEmpty()) add(AgentContentBlock.TrendChart("Spending trend", normalizedTrends.takeLast(8)))
-            if (texts.isNotEmpty()) add(AgentContentBlock.PlainText(texts.joinToString("\n")))
+            
+            // Only add texts as a separate block if we didn't use them for the headline,
+            // or if there are multiple texts.
+            val unusedTexts = texts.filter { it != headline }
+            if (unusedTexts.isNotEmpty()) add(AgentContentBlock.PlainText(unusedTexts.joinToString("\n")))
+            
             warnings.distinct().forEach { add(AgentContentBlock.Warning("Budget signal", it)) }
             if (options.isNotEmpty()) add(AgentContentBlock.Clarification("Try one of these", options.distinct()))
         }.ifEmpty {
-            listOf(AgentContentBlock.PlainText(headline))
+            if (explicitReply == null) {
+                listOf(AgentContentBlock.PlainText(headline))
+            } else {
+                emptyList() // Headline is enough if we have a direct reply
+            }
         }
 
         return ParsedAgentResponse(headline = headline, blocks = blocks)
@@ -198,7 +213,8 @@ class AgentResponseParser {
         totals: MutableList<AgentContentBlock.TotalsSummary>,
         options: MutableList<String>,
     ) {
-        obj.findString("message", "response", "answer", "summary", "insight")?.let(texts::add)
+        // Find textual messages to display if the main `reply` wasn't set at the root
+        obj.findString("reply", "message", "response", "answer", "summary", "insight")?.let(texts::add)
         obj.findString("warning", "alert", "error")?.let(warnings::add)
         parseTotals(obj)?.let(totals::add)
         parseExpense(obj)?.let(expenses::add)
